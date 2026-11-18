@@ -1,0 +1,194 @@
+# ============================================================================
+# Nabz uptime alerts — digiclubir-lab/nabz-uptime-Public
+#
+# What it does:
+#   Every 5 minutes it curls the 3 monitored URLs. A monitor is DOWN when
+#   curl times out (15 s) or the HTTP status is not 2xx/3xx.
+#   On an UP -> DOWN transition it sends a short Persian SMS via MeliPayamak
+#   (the SAME Console API the Nabz panel uses — see below). If the SMS call
+#   fails, it falls back to email via the site's SMTP.
+#   On a DOWN -> UP transition it sends a short "recovered" SMS.
+#   State is kept in .github/uptime-state.json (committed back to the repo),
+#   so a monitor that stays down does NOT re-alert every 5 minutes.
+#
+# Where it goes:
+#   .github/workflows/uptime-alerts.yml  in the repo digiclubir-lab/nabz-uptime-Public
+#
+# GitHub secrets to add (Settings -> Secrets and variables -> Actions):
+#   MELIPAYAMAK_TOKEN  - MeliPayamak Console API token (panel setting: sms_token)
+#   MELIPAYAMAK_FROM   - SMS sender line (panel setting: sms_from)
+#   ALERT_SMS_TO       - Mobile that receives the alert SMS (his mobile)
+#   SMTP_HOST          - SMTP server, e.g. mail.nabzfx.com
+#   SMTP_PORT          - SMTP port, e.g. 465 (SSL)
+#   SMTP_USERNAME      - SMTP login, e.g. info@nabzfx.com
+#   SMTP_PASSWORD      - SMTP mailbox password
+#   ALERT_EMAIL_TO     - Email that receives the fallback alert
+# No credential, token, password or phone number is hardcoded in this file.
+#
+# MeliPayamak API (copied from the panel's SMS client,
+# nabz-fx-panel/includes/class-nabz-sms.php :: send_via_line / post_json):
+#   POST https://console.melipayamak.com/api/send/simple/{token}
+#   Headers: Content-Type: application/json; charset=utf-8
+#   Body:    {"from": "<line>", "to": "<mobile>", "text": "<message>"}
+#   Success: HTTP 2xx AND (positive recId OR status containing "موفق")
+# ============================================================================
+
+name: Uptime alerts (SMS + email fallback)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # every 5 minutes
+  workflow_dispatch:
+    inputs:
+      send_test_sms:
+        description: "Send a test SMS to ALERT_SMS_TO (ignores monitor state)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # needed to commit the state file back to the repo
+
+concurrency:
+  group: uptime-alerts
+  cancel-in-progress: false
+
+jobs:
+  check-and-alert:
+    runs-on: ubuntu-latest
+    env:
+      STATE_FILE: .github/uptime-state.json
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Check monitors and send SMS on state change
+        env:
+          MELIPAYAMAK_TOKEN: ${{ secrets.MELIPAYAMAK_TOKEN }}
+          MELIPAYAMAK_FROM: ${{ secrets.MELIPAYAMAK_FROM }}
+          ALERT_SMS_TO: ${{ secrets.ALERT_SMS_TO }}
+          SEND_TEST_SMS: ${{ inputs.send_test_sms }}
+        run: |
+          set -u
+          # --- Monitors: "key|label|url" ----------------------------------
+          MONITORS=(
+            "site|سایت اصلی|https://nabzfx.com/"
+            "api|REST API|https://nabzfx.com/wp-json/"
+            "panel|پنل کاربر|https://nabzfx.com/nabz-panel/"
+          )
+
+          # --- SMS helper: echoes OK or FAIL ------------------------------
+          # Same call the panel makes: POST /api/send/simple/{token}
+          # Body: {"from","to","text"} — success = HTTP 2xx + positive
+          # recId, or a status containing "موفق".
+          send_sms() {
+            local text="$1" resp http_code body
+            resp=$(curl -s -w "\n%{http_code}" --max-time 20 \
+              -H 'Content-Type: application/json; charset=utf-8' \
+              -d "$(jq -nc --arg from "$MELIPAYAMAK_FROM" --arg to "$ALERT_SMS_TO" \
+                    --arg text "$text" '{from:$from, to:$to, text:$text}')" \
+              "https://console.melipayamak.com/api/send/simple/${MELIPAYAMAK_TOKEN}")
+            http_code=$(printf '%s' "$resp" | tail -n 1)
+            body=$(printf '%s' "$resp" | sed '$d')
+            echo "SMS HTTP $http_code body: $body"
+            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ] \
+              && printf '%s' "$body" | jq -e \
+                '((.recId // "" | tostring) | test("^[1-9][0-9]*$")) or ((.status // "") | contains("موفق"))' \
+                >/dev/null 2>&1; then
+              echo OK
+            else
+              echo FAIL
+            fi
+          }
+
+          # --- Previous state (default: everything up) --------------------
+          if [ -f "$STATE_FILE" ]; then
+            PREV_STATE=$(cat "$STATE_FILE")
+          else
+            PREV_STATE='{"site":"up","api":"up","panel":"up"}'
+          fi
+          echo "Previous state: $PREV_STATE"
+
+          # --- Test mode: send one test SMS, change nothing ---------------
+          if [ "${SEND_TEST_SMS:-false}" = "true" ]; then
+            RESULT=$(send_sms "نبض FX — پیامک تست هشدار آپتایم. مانیتورها بررسی شدند و سالم‌اند.")
+            echo "Test SMS result: $RESULT"
+            if [ "$RESULT" = "FAIL" ]; then
+              {
+                echo "EMAIL_NEEDED=true"
+                echo "EMAIL_SUBJECT=تست هشدار آپتایم نبض — پیامک ناموفق بود"
+                echo "EMAIL_BODY=پیامک تست هشدار آپتایم نبض ارسال نشد. لطفاً توکن و خط ارسال ملی‌پیامک را بررسی کنید."
+              } >> "$GITHUB_ENV"
+            fi
+            exit 0
+          fi
+
+          # --- Check each monitor -----------------------------------------
+          NEW_STATE='{}'
+          for entry in "${MONITORS[@]}"; do
+            key="${entry%%|*}"; rest="${entry#*|}"
+            label="${rest%%|*}"; url="${rest#*|}"
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 -L "$url" || echo "000")
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              status="up"
+            else
+              status="down"
+            fi
+            prev=$(printf '%s' "$PREV_STATE" | jq -r --arg k "$key" '.[$k] // "up"')
+            echo "$label ($url) -> HTTP $code = $status (was $prev)"
+            NEW_STATE=$(printf '%s' "$NEW_STATE" | jq --arg k "$key" --arg v "$status" '. + {($k): $v}')
+            # State change only — a monitor that stays down does not re-alert.
+            if [ "$status" = "down" ] && [ "$prev" != "down" ]; then
+              TEXT="⚠️ نبض FX — «$label» در دسترس نیست ($url) — $(date -u '+%Y-%m-%d %H:%M UTC')"
+              RESULT=$(send_sms "$TEXT")
+              echo "Down-alert SMS for $label: $RESULT"
+              if [ "$RESULT" = "FAIL" ]; then
+                {
+                  echo "EMAIL_NEEDED=true"
+                  echo "EMAIL_SUBJECT=هشدار: «$label» نبض در دسترس نیست"
+                  echo "EMAIL_BODY=مانیتور «$label» ($url) در دسترس نیست. پیامک هشدار ارسال نشد؛ لطفاً وضعیت سایت را بررسی کنید. زمان: $(date -u '+%Y-%m-%d %H:%M UTC')"
+                } >> "$GITHUB_ENV"
+              fi
+            elif [ "$status" = "up" ] && [ "$prev" = "down" ]; then
+              TEXT="✅ نبض FX — «$label» دوباره در دسترس است ($url) — $(date -u '+%Y-%m-%d %H:%M UTC')"
+              RESULT=$(send_sms "$TEXT")
+              echo "Recovery SMS for $label: $RESULT"
+              if [ "$RESULT" = "FAIL" ]; then
+                {
+                  echo "EMAIL_NEEDED=true"
+                  echo "EMAIL_SUBJECT=بازیابی: «$label» نبض دوباره در دسترس است"
+                  echo "EMAIL_BODY=مانیتور «$label» ($url) دوباره در دسترس است. پیامک بازیابی ارسال نشد. زمان: $(date -u '+%Y-%m-%d %H:%M UTC')"
+                } >> "$GITHUB_ENV"
+              fi
+            fi
+          done
+
+          # --- Write the new state file -----------------------------------
+          echo "$NEW_STATE" | jq . > "$STATE_FILE"
+          echo "New state: $NEW_STATE"
+
+      - name: Email fallback if any SMS failed
+        if: env.EMAIL_NEEDED == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          secure: true
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: ${{ env.EMAIL_SUBJECT }}
+          to: ${{ secrets.ALERT_EMAIL_TO }}
+          from: ${{ secrets.SMTP_USERNAME }}
+          body: ${{ env.EMAIL_BODY }}
+
+      - name: Commit state file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/uptime-state.json
+          if git diff --cached --quiet; then
+            echo "State unchanged, nothing to commit."
+          else
+            git commit -m "chore: update uptime monitor state [skip ci]"
+            git pull --rebase origin "${GITHUB_REF_NAME:-main}" || true
+            git push || echo "State push failed (likely a race with another run) — next run will retry."
+          fi
