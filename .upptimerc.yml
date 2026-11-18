@@ -10,7 +10,6 @@ sites:
   - name: Nabz panel
     url: https://nabzfx.com/nabz-panel/
 
-
 status-website:
   # Add your custom domain name, or remove the `cname` line if you don't have a domain
   # Uncomment the `baseUrl` line if you don't have a custom domain and add your repo name there
