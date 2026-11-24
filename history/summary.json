@@ -4,19 +4,19 @@
     "url": "https://nabzfx.com/",
     "icon": "https://icons.duckduckgo.com/ip3/nabzfx.com.ico",
     "slug": "nabz-website",
-    "status": "down",
-    "uptime": "99.99%",
-    "uptimeDay": "99.96%",
-    "uptimeWeek": "99.99%",
-    "uptimeMonth": "99.99%",
-    "uptimeYear": "99.99%",
-    "time": 2251,
-    "timeDay": 1493,
-    "timeWeek": 2251,
-    "timeMonth": 2251,
-    "timeYear": 2251,
+    "status": "up",
+    "uptime": "98.72%",
+    "uptimeDay": "91.85%",
+    "uptimeWeek": "98.72%",
+    "uptimeMonth": "98.72%",
+    "uptimeYear": "98.72%",
+    "time": 2186,
+    "timeDay": 1551,
+    "timeWeek": 2186,
+    "timeMonth": 2186,
+    "timeYear": 2186,
     "dailyMinutesDown": {
-      "2026-11-24": 1
+      "2026-11-24": 117
     }
   },
   {
@@ -24,19 +24,19 @@
     "url": "https://nabzfx.com/wp-json/",
     "icon": "https://icons.duckduckgo.com/ip3/nabzfx.com.ico",
     "slug": "nabz-api",
-    "status": "down",
-    "uptime": "100.00%",
-    "uptimeDay": "99.98%",
-    "uptimeWeek": "100.00%",
-    "uptimeMonth": "100.00%",
-    "uptimeYear": "100.00%",
-    "time": 5914,
-    "timeDay": 5027,
-    "timeWeek": 5914,
-    "timeMonth": 5914,
-    "timeYear": 5914,
+    "status": "up",
+    "uptime": "98.72%",
+    "uptimeDay": "91.86%",
+    "uptimeWeek": "98.72%",
+    "uptimeMonth": "98.72%",
+    "uptimeYear": "98.72%",
+    "time": 5859,
+    "timeDay": 5158,
+    "timeWeek": 5859,
+    "timeMonth": 5859,
+    "timeYear": 5859,
     "dailyMinutesDown": {
-      "2026-11-24": 0
+      "2026-11-24": 117
     }
   },
   {
@@ -44,17 +44,19 @@
     "url": "https://nabzfx.com/nabz-panel/",
     "icon": "https://icons.duckduckgo.com/ip3/nabzfx.com.ico",
     "slug": "nabz-panel",
-    "status": "down",
-    "uptime": "100.00%",
-    "uptimeDay": "100.00%",
-    "uptimeWeek": "100.00%",
-    "uptimeMonth": "100.00%",
-    "uptimeYear": "100.00%",
-    "time": 5115,
-    "timeDay": 3443,
-    "timeWeek": 5115,
-    "timeMonth": 5115,
-    "timeYear": 5115,
-    "dailyMinutesDown": {}
+    "status": "up",
+    "uptime": "98.72%",
+    "uptimeDay": "91.87%",
+    "uptimeWeek": "98.72%",
+    "uptimeMonth": "98.72%",
+    "uptimeYear": "98.72%",
+    "time": 5433,
+    "timeDay": 4955,
+    "timeWeek": 5433,
+    "timeMonth": 5433,
+    "timeYear": 5433,
+    "dailyMinutesDown": {
+      "2026-11-24": 117
+    }
   }
 ]
