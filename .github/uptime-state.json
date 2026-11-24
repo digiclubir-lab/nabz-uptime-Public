@@ -1,5 +1,5 @@
 {
   "site": "up",
-  "api": "up",
-  "panel": "up"
+  "api": "down",
+  "panel": "down"
 }
